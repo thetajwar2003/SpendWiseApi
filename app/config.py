@@ -12,5 +12,4 @@ class Config:
     COGNITO_APP_CLIENT_ID = os.getenv('COGNITO_APP_CLIENT_ID')
     PLAID_CLIENT_ID = os.getenv('PLAID_CLIENT_ID')
     PLAID_SECRET = os.getenv('PLAID_SECRET')
-    # Default to 'sandbox' if not set
-    PLAID_ENV = os.getenv('PLAID_ENV', 'sandbox')
+    PLAID_ENV = os.getenv('PLAID_ENV', 'sandbox')  # Default to 'sandbox'
