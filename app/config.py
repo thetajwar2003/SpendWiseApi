@@ -10,6 +10,7 @@ class Config:
     AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
     COGNITO_USER_POOL_ID = os.getenv('COGNITO_USER_POOL_ID')
     COGNITO_APP_CLIENT_ID = os.getenv('COGNITO_APP_CLIENT_ID')
+    COGNITO_APP_CLIENT_SECRET = os.getenv('COGNITO_APP_CLIENT_SECRET')
     PLAID_CLIENT_ID = os.getenv('PLAID_CLIENT_ID')
     PLAID_SECRET = os.getenv('PLAID_SECRET')
     PLAID_ENV = os.getenv('PLAID_ENV', 'sandbox')  # Default to 'sandbox'
