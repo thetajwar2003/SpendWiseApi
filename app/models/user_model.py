@@ -14,7 +14,10 @@ class UserModel:
             'email': email,
             'first_name': first_name,
             'last_name': last_name,
-            'created_at': datetime.utcnow().isoformat()
+            'item_id': None,
+            'access_token': None,
+            'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat()
         })
 
     def get_user(self, user_id):
@@ -24,15 +27,32 @@ class UserModel:
         response = self.table.get_item(Key={'user_id': user_id})
         return response.get('Item')
 
-    def update_user(self, user_id, updates):
+    def update_item(self, user_id, **attributes):
         """
-        Update user data in DynamoDB.
-        """
-        expression = ", ".join(f"{key}=:{key}" for key in updates.keys())
-        attribute_values = {f":{key}": value for key, value in updates.items()}
+        Dynamically update attributes for a user in DynamoDB.
 
-        self.table.update_item(
-            Key={'user_id': user_id},
-            UpdateExpression=f"SET {expression}",
-            ExpressionAttributeValues=attribute_values
-        )
+        Args:
+            user_id (str): The user ID (Partition Key).
+            **attributes: Arbitrary key-value pairs to update or add.
+        """
+        try:
+            # Add the updated_at timestamp dynamically
+            attributes['updated_at'] = datetime.utcnow().isoformat()
+
+            # Build the UpdateExpression and ExpressionAttributeValues
+            update_expression = "SET " + \
+                ", ".join([f"{key} = :{key}" for key in attributes.keys()])
+            expression_attribute_values = {
+                f":{key}": value for key, value in attributes.items()}
+
+            # Perform the update operation
+            self.table.update_item(
+                Key={'user_id': user_id},
+                UpdateExpression=update_expression,
+                ExpressionAttributeValues=expression_attribute_values
+            )
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                raise ValueError("User not found")
+            else:
+                raise e
