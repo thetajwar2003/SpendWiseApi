@@ -1,9 +1,28 @@
 from flask import Blueprint, request, jsonify, current_app
 from ..controllers.plaid_controller import PlaidController
 from ..models.user_model import UserModel
+from functools import wraps
+from datetime import datetime, timedelta, date
+from collections import defaultdict
 
 # Define Blueprint correctly
 plaid_bp = Blueprint('plaid_bp', __name__)
+
+
+def requires_auth(func):
+    @wraps(func)
+    def decorated(*args, **kwargs):
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return jsonify({'error': 'Authorization Bearer token is required'}), 401
+
+        # Extract the Access Token (Bearer token)
+        access_token = auth_header.split(" ")[1]
+        # Attach to request object for downstream use
+        request.access_token = access_token
+        return func(*args, **kwargs)
+
+    return decorated
 
 
 @plaid_bp.route('/create_link_token', methods=['POST'])
@@ -55,3 +74,175 @@ def exchange_public_token():
 
     except Exception as e:
         return jsonify({'error': f"Error linking bank account: {str(e)}"}), 500
+
+
+@plaid_bp.route('/get_user_bank_info', methods=['POST'])
+@requires_auth  # Validate the Bearer token
+def get_user_bank_info():
+    """
+    Fetch the user's bank account information from Plaid using their access token.
+    """
+    plaid_client = current_app.plaid_client
+    user_model = UserModel(current_app.dynamodb)  # Initialize the user model
+    plaid_controller = PlaidController(plaid_client)
+
+    data = request.json
+    user_id = data.get('user_id')
+
+    if not user_id:
+        return jsonify({'error': 'User ID is required'}), 400
+
+    try:
+        # Retrieve user from DynamoDB
+        user = user_model.get_user(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        access_token = user.get('access_token')
+        if not access_token:
+            return jsonify({'error': 'No linked bank account for this user'}), 400
+
+        # Fetch bank accounts using Plaid
+        accounts = plaid_controller.get_accounts(access_token)
+
+        return jsonify({
+            "message": "User bank information retrieved successfully",
+            "accounts": accounts
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': f"Error fetching bank info: {str(e)}"}), 500
+
+
+@plaid_bp.route('/transactions/summary', methods=['POST'])
+@requires_auth
+def get_transactions_summary():
+    """
+    Fetch the user's transactions and compute income/expenses summary.
+    Allows optional start_date and end_date parameters.
+    """
+    plaid_client = current_app.plaid_client
+    user_model = UserModel(current_app.dynamodb)
+    plaid_controller = PlaidController(plaid_client)
+
+    data = request.json
+    user_id = data.get('user_id')
+    start_date = data.get('start_date')  # Optional
+    end_date = data.get('end_date')  # Optional
+
+    if not user_id:
+        return jsonify({'error': 'User ID is required'}), 400
+
+    try:
+        # Retrieve user from DynamoDB
+        user = user_model.get_user(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        access_token = user.get('access_token')
+        if not access_token:
+            return jsonify({'error': 'No linked bank account for this user'}), 400
+
+        # Convert start_date and end_date to datetime.date
+        start_date = datetime.strptime(
+            start_date, "%Y-%m-%d").date() if start_date else None
+        end_date = datetime.strptime(
+            end_date, "%Y-%m-%d").date() if end_date else None
+
+        # Get transactions summary
+        summary = plaid_controller.get_transactions_summary(
+            access_token=access_token,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        return jsonify({
+            "message": "Transactions summary fetched successfully",
+            "income": round(summary["income"], 2),
+            "expenses": round(summary["expenses"], 2),
+            "income_details": summary["income_details"],
+            "expense_details": summary["expense_details"]
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': f"Error fetching transactions summary: {str(e)}"}), 500
+
+
+@plaid_bp.route('/transactions/monthly-summary', methods=['POST'])
+@requires_auth
+def get_monthly_summary():
+    """
+    Endpoint to get income and expense summary for each month.
+    """
+    plaid_client = current_app.plaid_client
+    plaid_controller = PlaidController(plaid_client)
+    user_model = UserModel(current_app.dynamodb)
+
+    # Get request data
+    data = request.json
+    user_id = data.get('user_id')
+
+    if not user_id:
+        return jsonify({'error': 'User ID is required'}), 400
+
+    try:
+        # Retrieve user from DynamoDB
+        user = user_model.get_user(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        access_token = user.get('access_token')
+        if not access_token:
+            return jsonify({'error': 'No linked bank account for this user'}), 400
+
+        # Fetch transactions from Plaid
+        transactions = plaid_controller.get_transactions(access_token)
+
+        # Process transactions: group by month
+        monthly_summary = defaultdict(lambda: {'income': 0, 'expenses': 0})
+
+        for txn in transactions:
+            try:
+                # Safely handle txn['date']
+                txn_date = txn.get('date')
+                if not txn_date:
+                    continue  # Skip if no date
+
+                # Check if txn_date is already a datetime.date object
+                if isinstance(txn_date, datetime):
+                    txn_date = txn_date.date()  # Extract date if datetime
+                elif isinstance(txn_date, str):
+                    txn_date = datetime.strptime(txn_date, "%Y-%m-%d").date()
+
+                # Extract month abbreviation
+                month = txn_date.strftime("%b")
+
+                # Categorize amount into income or expenses
+                amount = txn.get('amount', 0)
+                if amount < 0:  # Negative amount = income
+                    monthly_summary[month]['income'] += abs(amount)
+                else:  # Positive amount = expense
+                    monthly_summary[month]['expenses'] += amount
+            except Exception as txn_error:
+                print(f"Skipping malformed transaction: {txn_error}")
+                continue
+
+        # Convert summary to a list of dictionaries (sorted by month order)
+        month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May',
+                       'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        result = [
+            {
+                "month": month,
+                "income": round(monthly_summary[month]['income'], 2),
+                "expenses": round(monthly_summary[month]['expenses'], 2)
+            }
+            for month in month_order if month in monthly_summary
+        ]
+
+        return jsonify({
+            "message": "Monthly income and expense summary fetched successfully",
+            "monthly_summary": result
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': f"Error fetching monthly summary: {str(e)}"}), 500

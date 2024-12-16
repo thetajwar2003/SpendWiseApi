@@ -59,7 +59,7 @@ class AuthController:
 
     def login_user(self, email, password):
         """
-        Log in a user using AWS Cognito and return tokens.
+        Log in a user using AWS Cognito and return tokens and user_id.
         """
         try:
             # Check if the App Client has a client secret
@@ -81,18 +81,41 @@ class AuthController:
                 AuthParameters=auth_parameters
             )
 
-            # Return tokens and a success message
+            # Extract tokens from the authentication response
             auth_result = response['AuthenticationResult']
+            access_token = auth_result['AccessToken']
+
+            # Use the access token to get the user's attributes (including user_id)
+            user_response = self.cognito.get_user(AccessToken=access_token)
+            user_id = next(
+                attr['Value'] for attr in user_response['UserAttributes'] if attr['Name'] == 'sub')
+
+            # Return tokens, user_id, and a success message
             return {
                 "message": "Login successful",
-                "access_token": auth_result['AccessToken'],
+                "access_token": access_token,
                 "refresh_token": auth_result['RefreshToken'],
                 "id_token": auth_result['IdToken'],
+                "user_id": user_id
             }, 200
 
         except self.cognito.exceptions.NotAuthorizedException:
             return {"error": "Invalid credentials"}, 401
         except self.cognito.exceptions.UserNotFoundException:
             return {"error": "User not found"}, 404
+        except ClientError as e:
+            return {"error": f"Unexpected error: {str(e)}"}, 500
+
+    def sign_out(self, access_token):
+        """
+        Sign out a user by invalidating their session in AWS Cognito.
+        """
+        try:
+            # Use the access token to sign out the user globally
+            self.cognito.global_sign_out(AccessToken=access_token)
+            return {"message": "Sign out successful"}, 200
+
+        except self.cognito.exceptions.NotAuthorizedException:
+            return {"error": "Invalid or expired access token"}, 401
         except ClientError as e:
             return {"error": f"Unexpected error: {str(e)}"}, 500

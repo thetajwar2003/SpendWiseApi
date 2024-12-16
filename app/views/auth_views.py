@@ -49,31 +49,21 @@ def login():
     return jsonify(result), status_code
 
 
-@auth_bp.route('/confirm', methods=['POST'])
-def confirm_user():
-    data = request.json
+@auth_bp.route('/sign_out', methods=['POST'])
+def sign_out():
+    """
+    Sign out the user by invalidating their access token.
+    """
+    # Get the access token from the request header
+    access_token = request.headers.get("Authorization")
 
-    # Input validation
-    email = data.get('email')
-    confirmation_code = data.get('confirmation_code')
+    if not access_token:
+        return jsonify({"error": "Access token is required"}), 400
 
-    if not email or not confirmation_code:
-        return jsonify({"error": "Email and confirmation code are required"}), 400
+    # Remove the "Bearer " prefix if present
+    if access_token.startswith("Bearer "):
+        access_token = access_token[len("Bearer "):]
 
-    result, status_code = auth_controller.confirm_user(
-        email, confirmation_code)
-    return jsonify(result), status_code
-
-
-@auth_bp.route('/resend-confirmation', methods=['POST'])
-def resend_confirmation():
-    data = request.json
-
-    # Input validation
-    email = data.get('email')
-
-    if not email:
-        return jsonify({"error": "Email is required"}), 400
-
-    result, status_code = auth_controller.resend_confirmation_code(email)
-    return jsonify(result), status_code
+    # No user model needed for sign out
+    auth_controller = AuthController(current_app.cognito, None)
+    return jsonify(*auth_controller.sign_out(access_token))
