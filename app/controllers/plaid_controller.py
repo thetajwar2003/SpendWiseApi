@@ -178,3 +178,135 @@ class PlaidController:
             return result
         except Exception as e:
             raise Exception(f"Error fetching monthly summary: {str(e)}")
+
+    def get_previous_month_expenses(self, access_token):
+        """
+        Fetch expenses for the previous month and categorize them.
+        """
+        try:
+            # Calculate previous month's start and end dates
+            today = date.today()
+            first_day_current_month = today.replace(day=1)
+            last_day_previous_month = first_day_current_month - \
+                timedelta(days=1)
+            first_day_previous_month = last_day_previous_month.replace(day=1)
+
+            # start_date and end_date as date objects
+            start_date = first_day_previous_month
+            end_date = last_day_previous_month
+
+            # Fetch transactions from Plaid
+            request = TransactionsGetRequest(
+                access_token=access_token,
+                start_date=start_date,
+                end_date=end_date,
+                options=TransactionsGetRequestOptions(count=500, offset=0)
+            )
+            response = self.plaid_client.transactions_get(request)
+            transactions = response.to_dict()["transactions"]
+
+            # Group expenses by category
+            category_expenses = defaultdict(float)
+            total_expenses = 0.0
+
+            for txn in transactions:
+                amount = txn["amount"]
+                category = txn.get("category", ["Uncategorized"])[0]
+
+                # Only process expenses (positive amounts)
+                if amount > 0:
+                    category_expenses[category] += amount
+                    total_expenses += amount
+
+            # Format results
+            formatted_categories = [
+                {"category": cat, "amount": round(amount, 2)}
+                for cat, amount in category_expenses.items()
+            ]
+
+            return {
+                "categories": formatted_categories,
+                "total_categories": len(category_expenses),
+                "total_expenses": round(total_expenses, 2)
+            }
+
+        except Exception as e:
+            raise Exception(
+                f"Error fetching previous month expenses: {str(e)}")
+
+    def get_account_details(self, access_token, account_id):
+        """
+        Fetch account details for a specific account.
+        """
+        try:
+            # Use the AccountsGetRequest to fetch account details
+            request = AccountsGetRequest(access_token=access_token)
+            response = self.plaid_client.accounts_get(request)
+            accounts = response.to_dict().get("accounts", [])
+
+            # Filter to get the specific account by account_id
+            for account in accounts:
+                if account["account_id"] == account_id:
+                    return account  # Return the matched account details
+
+            # If no account matches, raise an exception
+            raise Exception("Account not found for the given account_id")
+
+        except Exception as e:
+            raise Exception(f"Error fetching account details: {str(e)}")
+
+    def get_transactions_for_account(self, access_token, account_id, days=90):
+        """
+        Fetch transactions for a specific account and identify recurring transactions.
+        """
+        try:
+            # Set the start and end dates for the transactions
+            end_date = datetime.now().date()
+            start_date = end_date - timedelta(days=days)
+
+            # Pass `start_date` and `end_date` as `datetime.date` objects
+            request = TransactionsGetRequest(
+                access_token=access_token,
+                start_date=start_date,  # Pass as `date` object
+                end_date=end_date,      # Pass as `date` object
+                options=TransactionsGetRequestOptions(
+                    account_ids=[account_id], count=500, offset=0)
+            )
+            response = self.plaid_client.transactions_get(request)
+            transactions = response.to_dict().get("transactions", [])
+
+            # Process transactions to identify recurring ones
+            recurring_transactions = self.identify_recurring_transactions(
+                transactions)
+
+            return {
+                "transactions": transactions,
+                "recurring_transactions": recurring_transactions
+            }
+        except Exception as e:
+            raise Exception(f"Error fetching transactions: {str(e)}")
+
+    def identify_recurring_transactions(self, transactions):
+        """
+        Identify recurring transactions based on transaction name and frequency.
+        """
+        transaction_counts = defaultdict(list)
+
+        # Group transactions by name and store transaction amounts and dates
+        for txn in transactions:
+            transaction_counts[txn['name']].append({
+                "amount": txn['amount'],
+                "date": txn['date']
+            })
+
+        # Identify recurring transactions (e.g., more than 3 occurrences)
+        recurring = []
+        for name, txn_list in transaction_counts.items():
+            if len(txn_list) >= 3:  # Arbitrary threshold for recurring
+                recurring.append({
+                    "name": name,
+                    "occurrences": len(txn_list),
+                    "transactions": txn_list
+                })
+
+        return recurring

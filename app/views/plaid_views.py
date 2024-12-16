@@ -246,3 +246,91 @@ def get_monthly_summary():
 
     except Exception as e:
         return jsonify({'error': f"Error fetching monthly summary: {str(e)}"}), 500
+
+
+@plaid_bp.route('/transactions/expense-categories', methods=['POST'])
+@requires_auth
+def get_expense_categories():
+    """
+    Endpoint to get expense categories breakdown for the previous month.
+    """
+    plaid_client = current_app.plaid_client
+    plaid_controller = PlaidController(plaid_client)
+    user_model = UserModel(current_app.dynamodb)
+
+    # Get request data
+    data = request.json
+    user_id = data.get('user_id')
+
+    if not user_id:
+        return jsonify({'error': 'User ID is required'}), 400
+
+    try:
+        # Retrieve user from DynamoDB
+        user = user_model.get_user(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        access_token = user.get('access_token')
+        if not access_token:
+            return jsonify({'error': 'No linked bank account for this user'}), 400
+
+        # Fetch expense categories
+        result = plaid_controller.get_previous_month_expenses(access_token)
+
+        return jsonify({
+            "message": "Expense categories fetched successfully",
+            "categories": result["categories"],
+            "total_categories": result["total_categories"],
+            "total_expenses": result["total_expenses"]
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': f"Error fetching expense categories: {str(e)}"}), 500
+
+
+@plaid_bp.route('/get_account_details', methods=['POST'])
+@requires_auth
+def get_account_details():
+    """
+    Fetch details of a specific account and its transactions, highlighting recurring ones.
+    """
+    plaid_client = current_app.plaid_client
+    user_model = UserModel(current_app.dynamodb)
+    plaid_controller = PlaidController(plaid_client)
+
+    # Get request data
+    data = request.json
+    user_id = data.get('user_id')
+    account_id = data.get('account_id')
+
+    if not user_id or not account_id:
+        return jsonify({'error': 'User ID and Account ID are required'}), 400
+
+    try:
+        # Retrieve user from DynamoDB
+        user = user_model.get_user(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        access_token = user.get('access_token')
+        if not access_token:
+            return jsonify({'error': 'No linked bank account for this user'}), 400
+
+        # Fetch account details
+        account_details = plaid_controller.get_account_details(
+            access_token, account_id)
+
+        # Fetch transactions and identify recurring ones
+        transactions_data = plaid_controller.get_transactions_for_account(
+            access_token, account_id)
+
+        return jsonify({
+            "message": "Account details and transactions fetched successfully",
+            "account_details": account_details,
+            "transactions": transactions_data["transactions"],
+            "recurring_transactions": transactions_data["recurring_transactions"]
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': f"Error fetching account details: {str(e)}"}), 500
