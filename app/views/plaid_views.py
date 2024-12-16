@@ -334,3 +334,43 @@ def get_account_details():
 
     except Exception as e:
         return jsonify({'error': f"Error fetching account details: {str(e)}"}), 500
+
+
+@plaid_bp.route("/liabilities", methods=["POST"])
+@requires_auth
+def get_liabilities():
+    """
+    Fetch liabilities data for the user's accounts.
+    Includes credit cards, mortgage, and student loans.
+    """
+    plaid_client = current_app.plaid_client
+    user_model = UserModel(current_app.dynamodb)
+    plaid_controller = PlaidController(plaid_client)
+
+    # Retrieve request body data
+    data = request.json
+    user_id = data.get("user_id")
+
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+
+    try:
+        # Fetch user from database
+        user = user_model.get_user(user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        access_token = user.get("access_token")
+        if not access_token:
+            return jsonify({"error": "No linked bank account for this user"}), 400
+
+        # Fetch liabilities from Plaid
+        liabilities = plaid_controller.get_liabilities(access_token)
+
+        return jsonify({
+            "message": "Liabilities fetched successfully",
+            "liabilities": liabilities
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Error fetching liabilities: {str(e)}"}), 500

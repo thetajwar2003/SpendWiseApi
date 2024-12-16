@@ -5,6 +5,8 @@ from plaid.model.products import Products
 from plaid.model.country_code import CountryCode
 from plaid.model.transactions_get_request import TransactionsGetRequest
 from plaid.model.transactions_get_request_options import TransactionsGetRequestOptions
+from plaid.model.liabilities_get_request import LiabilitiesGetRequest
+from plaid.exceptions import ApiException
 from datetime import datetime, timedelta, date
 from collections import defaultdict
 
@@ -19,8 +21,8 @@ class PlaidController:
                 "client_user_id": user_id,
             },
             client_name="SpendWise",
-            products=[Products("transactions")],
-            country_codes=[CountryCode('US')],  # Fixed: Using CountryCode enum
+            products=[Products("transactions"), Products("liabilities")],
+            country_codes=[CountryCode('US')],
             language="en",
             redirect_uri="http://localhost:3000/login",
         )
@@ -310,3 +312,32 @@ class PlaidController:
                 })
 
         return recurring
+
+    def get_liabilities(self, access_token):
+        """
+        Fetch and return the entire liabilities response for the given access token.
+        """
+        try:
+            request = LiabilitiesGetRequest(access_token=access_token)
+            response = self.plaid_client.liabilities_get(request)
+
+            # Convert response to a dictionary
+            liabilities = response.to_dict()
+
+            # Sanitize the liabilities fields
+            if "liabilities" in liabilities:
+                for liability_type in ["mortgage", "student", "credit"]:
+                    if liability_type in liabilities["liabilities"]:
+                        for item in liabilities["liabilities"][liability_type]:
+                            # Replace None with empty strings or default values
+                            if item.get("account_number") is None:
+                                item["account_number"] = ""
+
+                            # Example: Handle additional fields if needed
+                            if "interest_rate" in item and item["interest_rate"].get("percentage") is None:
+                                item["interest_rate"]["percentage"] = 0.0
+
+            return liabilities
+
+        except ApiException as e:
+            raise Exception(f"Error fetching liabilities: {str(e)}")
