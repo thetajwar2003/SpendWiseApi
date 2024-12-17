@@ -12,8 +12,6 @@ def create_app():
     app.config.from_object(Config)
 
     # Enable CORS for specific resources
-    # CORS(app, resources={r"/plaid/*": {"origins": "http://localhost:3000"},
-    #      r"/auth/*": {"origins": "http://localhost:3000"}})
     CORS(app)
 
     # Initialize AWS services
