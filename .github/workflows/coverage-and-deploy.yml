@@ -28,10 +28,20 @@ jobs:
 
       # Step 4: Run Tests with Coverage
       - name: Run Tests with Coverage
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          COGNITO_APP_CLIENT_ID: ${{ secrets.COGNITO_APP_CLIENT_ID }}
+          COGNITO_APP_CLIENT_SECRET: ${{ secrets.COGNITO_APP_CLIENT_SECRET }}
+          PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
+          PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
+          PLAID_ENV: ${{ secrets.PLAID_ENV }}
         run: |
           pytest --cov=app --cov-report=xml
 
-      # Step 5: Deploy coverage report to GitHub Pages
+      # Step 5: Deploy Coverage Report to GitHub Pages
       - name: Deploy Coverage Report to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
@@ -41,6 +51,16 @@ jobs:
       # Step 6: Deploy to Heroku
       - name: Deploy to Heroku
         uses: akhileshns/heroku-deploy@v3.12.12
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          COGNITO_APP_CLIENT_ID: ${{ secrets.COGNITO_APP_CLIENT_ID }}
+          COGNITO_APP_CLIENT_SECRET: ${{ secrets.COGNITO_APP_CLIENT_SECRET }}
+          PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
+          PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
+          PLAID_ENV: ${{ secrets.PLAID_ENV }}
         with:
           heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
           heroku_app_name: ${{ secrets.HEROKU_APP_NAME }}
