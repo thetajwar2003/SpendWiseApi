@@ -7,3 +7,4 @@ pytest-mock
 plaid-python
 pytest-cov 
 coverage
+coverage-badge

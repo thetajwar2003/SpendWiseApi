@@ -33,7 +33,8 @@ SpendWise is a **Personal Finance Management App** designed to help users manage
 ### Scalability and Security
 
 - Built using **AWS DynamoDB** for non-relational data storage.
-- Deployed with **AWS Elastic Beanstalk** for scalability and high availability.
+- Deployed with **Heroku** for production scalability.
+- Integrated with **Plaid** for banking data and secure transactions.
 
 ---
 
@@ -48,8 +49,7 @@ SpendWise is a **Personal Finance Management App** designed to help users manage
 
 ### Deployment
 
-- **AWS Elastic Beanstalk**: For scalable and managed deployment.
-- **AWS Lambda & API Gateway** (Optional): For serverless execution.
+- **Heroku**: For scalable and managed deployment.
 
 ---
 
@@ -97,6 +97,7 @@ spendwise-backend/
 1. Python 3.8 or later
 2. AWS Account with credentials for **DynamoDB**, **Cognito**, and other services.
 3. Plaid API credentials.
+4. Heroku CLI installed.
 
 ---
 
@@ -137,15 +138,25 @@ spendwise-backend/
    PLAID_ENV=sandbox  # or 'development'/'production'
    ```
 
-5. **Run the application:**
+5. **Run the application locally:**
 
    ```bash
    python run.py
    ```
 
-6. **Test the application:**
+6. **Run Tests with Coverage:**
 
-   Use **Postman** or **cURL** to test the endpoints. The server will run on `http://127.0.0.1:5000`.
+   ```bash
+   pytest --cov=app --cov-report=term --cov-report=html
+   ```
+
+   This will generate an HTML coverage report in the `htmlcov` folder.
+
+7. **Deploy to Heroku:**
+
+   ```bash
+   git push heroku master
+   ```
 
 ---
 
@@ -158,33 +169,104 @@ spendwise-backend/
 | POST   | `/auth/register` | Register a new user |
 | POST   | `/auth/login`    | Login and get a JWT |
 
-### **Transactions**
-
-| Method | Endpoint        | Description                     |
-| ------ | --------------- | ------------------------------- |
-| POST   | `/transactions` | Add a new transaction           |
-| GET    | `/transactions` | Get all transactions for a user |
-
-### **Budgets**
-
-| Method | Endpoint              | Description                |
-| ------ | --------------------- | -------------------------- |
-| POST   | `/budgets`            | Create a new budget        |
-| GET    | `/budgets`            | Get all budgets for a user |
-| PUT    | `/budgets/<category>` | Update a budget category   |
-| DELETE | `/budgets/<category>` | Delete a budget category   |
-
-### **Subscriptions**
-
-| Method | Endpoint              | Description                      |
-| ------ | --------------------- | -------------------------------- |
-| POST   | `/subscriptions`      | Add a new subscription           |
-| GET    | `/subscriptions`      | Get all subscriptions for a user |
-| DELETE | `/subscriptions/<id>` | Delete a subscription            |
+---
 
 ### **Plaid Integration**
 
-| Method | Endpoint                   | Description                      |
-| ------ | -------------------------- | -------------------------------- |
-| POST   | `/plaid/create_link_token` | Create a Plaid Link token        |
-| POST   | `/plaid/exchange_token`    | Exchange public token for access |
+| Method | Endpoint                                 | Description                             |
+| ------ | ---------------------------------------- | --------------------------------------- |
+| POST   | `/plaid/create_link_token`               | Create a Plaid Link token               |
+| POST   | `/plaid/exchange_public_token`           | Exchange public token for access token  |
+| POST   | `/plaid/get_user_bank_info`              | Retrieve user's linked bank information |
+| POST   | `/plaid/transactions/summary`            | Get transactions income/expense summary |
+| POST   | `/plaid/transactions/monthly-summary`    | Monthly income and expense summary      |
+| POST   | `/plaid/transactions/expense-categories` | Breakdown of expenses by category       |
+| POST   | `/plaid/get_account_details`             | Fetch details of a specific account     |
+| POST   | `/plaid/liabilities`                     | Get user's liabilities data             |
+
+---
+
+## Coverage Badge
+
+![Coverage](./coverage.svg)
+
+---
+
+## Deployment
+
+1. Ensure Heroku CLI is installed and logged in:
+
+   ```bash
+   heroku login
+   ```
+
+2. Deploy the app:
+
+   ```bash
+   git push heroku master
+   ```
+
+3. Add environment variables to Heroku:
+
+   ```bash
+   heroku config:set AWS_REGION=your-region
+   heroku config:set AWS_ACCESS_KEY_ID=your-access-key
+   heroku config:set AWS_SECRET_ACCESS_KEY=your-secret-key
+   heroku config:set PLAID_CLIENT_ID=your-client-id
+   heroku config:set PLAID_SECRET=your-plaid-secret
+   ```
+
+---
+
+### CI/CD Pipeline with GitHub Actions
+
+A **GitHub Actions** workflow is configured for:
+
+1. Running tests with coverage.
+2. Deploying the app to Heroku.
+
+**GitHub Workflow:**
+
+```yaml
+name: CI/CD for Flask App to Heroku
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Tests with Coverage
+        run: |
+          pytest --cov=app --cov-report=term --cov-report=html
+
+      - name: Update Coverage in README
+        uses: cicirello/jacoco-badge-generator@v2
+        with:
+          coverage-summary: coverage.xml
+          readme-path: README.md
+
+      - name: Deploy to Heroku
+        uses: akhileshns/heroku-deploy@v3.12.12
+        with:
+          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+          heroku_app_name: ${{ secrets.HEROKU_APP_NAME }}
+          heroku_email: ${{ secrets.HEROKU_EMAIL }}
+```
