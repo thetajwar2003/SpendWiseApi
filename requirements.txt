@@ -5,3 +5,5 @@ python-dotenv
 pytest
 pytest-mock
 plaid-python
+pytest-cov 
+coverage
